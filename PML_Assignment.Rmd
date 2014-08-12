@@ -1,0 +1,169 @@
+---
+title: "Analyses of Weight Lifting Exercise"
+output: html_document
+---
+
+
+### Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+This project deals with analysing existing data and developing predictive models using Algorithms(supervised learning) in CARET Package of R programming language. These models will be used to predict outcome of the new data.
+
+
+### Data Processing
+In this assignment, we were given with the two datasets.
+
+1. Training dataset (Available at: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+2. Test dataset (Available at:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+```{r}
+setInternet2(TRUE)
+
+#download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+
+#download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+
+trainingdata <- read.csv('pml-training.csv')
+testingdata <- read.csv('pml-testing.csv')
+
+```
+
+
+### Data Partitioning for Training and Testing
+To make efficient model, I have trained my model with 70% of given train data. Once model is prepared, I've cross validated the rest of 30% test data (from the training dataset) to predict values against already existing values. Then the final model applied to the given test dataset. 
+
+```{r}
+library(caret)
+
+trainpartitioning <- createDataPartition(y=trainingdata$classe,p=0.7,list=FALSE)
+traindata = trainingdata[trainpartitioning,]
+testdata = trainingdata[-trainpartitioning,]
+
+```
+
+I have used caret createDataPartition method in caret package to split data into two sections.
+
+    Training data - 70% of pml-training.csv
+    Testing data - 30% of pml-training.csv
+
+CreatedDataPartition functions gives indices of split data. 
+
+### Preprocessing
+
+#### Cleaning Near Zero Variance Features
+In the preprocessing, firstly I've removed the near zero variance features.
+
+```{r}
+
+# set seed
+set.seed(32768)
+# nearZeroVar
+nzv <- nearZeroVar(traindata)
+trainnzv <- traindata[-nzv]
+testnzv <- testdata[-nzv]
+testingdatanzv <- testingdata[-nzv]
+
+dim(trainnzv)
+dim(testnzv)
+dim(testingdatanzv)
+
+```
+
+#### Numeric Field Selection 
+I've only selected numeric fields from the training dataset to built the prediction model. In preprocessing, KnnImpute method has applied on numeric columns to compute the nearest possible value and also replaced Na values with 0.
+
+```{r}
+# return the indices of numeric columns
+numericindex <- which(lapply(trainnzv,class) %in% c('numeric'))
+numericindex
+
+trainnzv1 <- preProcess(trainnzv[,numericindex], method=c('knnImpute'))
+
+# KnnImpute on training dataset
+pred1 <- predict(trainnzv1, trainnzv[,numericindex])
+predtrain <- cbind(trainnzv$classe,pred1)
+names(predtrain)[1] <- 'classe'
+predtrain[is.na(predtrain)] <- 0
+
+# on test data from training dataset
+pred2 <- predict(trainnzv1, testnzv[,numericindex])
+predtest <- cbind(testnzv$classe, pred2)
+names(predtest)[1] <- 'classe'
+predtest[is.na(predtest)] <- 0
+
+# on applying on testing dataset.
+predtestingdata <- predict(trainnzv1,testingdatanzv[,numericindex] )
+
+
+dim(predtrain)
+dim(predtest)
+dim(predtestingdata)
+
+```
+
+### Prediction Model
+Random Forest Algorithm has been used to built model on training dataset and tested on the 30% data from training dataset. And then finally applied this model on test dataset for predicting the classe.
+
+```{r}
+
+library(randomForest)
+
+model <- randomForest(classe~.,data=predtrain, importance=TRUE)
+
+plot(model, main="Error vs no. of Trees")
+
+```
+
+
+In Random Forest model the error does decrease with the number of trees (as represented in the graph). 
+
+
+### Model Validation
+#### Training Set Accuracy
+```{r}
+predtrain1 <- predict(model, predtrain) 
+print(confusionMatrix(predtrain1, predtrain$classe))
+
+```
+Our model performed excellently against the training set. but we need to cross validate the performance against 30% of dataset and see if we have avoided overfitting.
+
+#### Validation set Accuracy
+Applying the model on 30% test data from the training dataset.
+```{r}
+predtest1 <- predict(model, predtest) 
+print(confusionMatrix(predtest1, predtest$classe))
+
+```
+The cross validation accuracy is 98.8% and the out-of-sample error is therefore 1.2% so our model performs rather good.
+
+
+### Predicting Test dataset
+The prediction of our algorithm for the test dataset is as follow.
+```{r}
+predanswers <- predict(model, predtestingdata) 
+predanswers
+
+```
+
+### Save the Output
+Save the output to files according to instructions and post it to the submission page.
+
+```{r}
+# Result
+
+predanswers <- predict(model, predtestingdata) 
+predanswers
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(as.character(predanswers))
+
+```
+
